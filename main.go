@@ -17,7 +17,7 @@ type fieldReader struct {
 	fp sync.Pool
 }
 
-func NewFieldReader(r io.Reader) *fieldReader {
+func newFieldReader(r io.Reader) *fieldReader {
 	br := bufio.NewReaderSize(os.Stdin, 65535)
 	return &fieldReader{
 		br: br,
@@ -208,12 +208,11 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("invalid syntax: '%s'", arg)
 		}
-
 		pickers[i] = picker
 	}
 
 	li := make([]string, 0, 16)
-	fr := NewFieldReader(os.Stdin)
+	fr := newFieldReader(os.Stdin)
 
 	for {
 		fields, err := fr.read()
