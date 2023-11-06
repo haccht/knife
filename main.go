@@ -11,15 +11,15 @@ import (
 	"sync"
 )
 
-type FieldReader struct {
+type fieldReader struct {
 	br *bufio.Reader
 	rp sync.Pool
 	fp sync.Pool
 }
 
-func NewFieldReader(r io.Reader) *FieldReader {
+func NewFieldReader(r io.Reader) *fieldReader {
 	br := bufio.NewReaderSize(os.Stdin, 65535)
-	return &FieldReader{
+	return &fieldReader{
 		br: br,
 		rp: sync.Pool{
 			New: func() interface{} {
@@ -34,7 +34,7 @@ func NewFieldReader(r io.Reader) *FieldReader {
 	}
 }
 
-func (fr *FieldReader) readOne() (string, bool, error) {
+func (fr *fieldReader) readOne() (string, bool, error) {
 	ptr := fr.rp.Get().(*[]rune)
 	defer fr.rp.Put(ptr)
 	runes := (*ptr)[:0]
@@ -74,7 +74,7 @@ L:
 	}
 }
 
-func (fr *FieldReader) read() ([]string, error) {
+func (fr *fieldReader) read() ([]string, error) {
 	ptr := fr.fp.Get().(*[]string)
 	defer fr.fp.Put(ptr)
 	fields := (*ptr)[:0]
