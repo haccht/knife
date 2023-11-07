@@ -40,7 +40,7 @@ func (fr *fieldReader) readOne() (string, bool, error) {
 	bytes := (*ptr)[:0]
 
 L:
-    // read one field
+	// read one field
 	for {
 		b, err := fr.br.ReadByte()
 		if err != nil {
@@ -48,9 +48,9 @@ L:
 		}
 
 		switch b {
-		case 9, 11, 12, 13, 32:  //'\t', '\v', '\f', '\r'
+		case 9, 11, 12, 13, 32: //'\t', '\v', '\f', '\r'
 			break L
-		case 10:  //'\n'
+		case 10: //'\n'
 			fr.br.UnreadByte()
 			break L
 		default:
@@ -58,7 +58,7 @@ L:
 		}
 	}
 
-    // read trailing spaces
+	// read trailing spaces
 	for {
 		b, err := fr.br.ReadByte()
 		if err != nil {
@@ -66,8 +66,8 @@ L:
 		}
 
 		switch b {
-		case 9, 11, 12, 13, 32:  //'\t', '\v', '\f', '\r'
-		case 10:  //'\n'
+		case 9, 11, 12, 13, 32: //'\t', '\v', '\f', '\r'
+		case 10: //'\n'
 			return string(bytes), true, nil
 		default:
 			fr.br.UnreadByte()
