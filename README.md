@@ -62,7 +62,7 @@ root 11
 Specify a single column from right with the negative index:
 
 ```bash
-$ ps aux | knife -- -1
+$ ps aux | knife -1
 COMMAND
 42
 [kthreadd]

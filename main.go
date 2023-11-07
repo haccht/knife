@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -217,10 +216,8 @@ func pick(f []string, l, r int) []string {
 }
 
 func run() error {
-	flag.Parse()
-
-	pickers := make([]picker, flag.NArg())
-	for i, arg := range flag.Args() {
+	pickers := make([]picker, len(os.Args)-1)
+	for i, arg := range os.Args[1:] {
 		picker, err := newPicker(arg)
 		if err != nil {
 			return fmt.Errorf("invalid syntax: '%s'", arg)
