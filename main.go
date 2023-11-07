@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,7 +19,7 @@ type fieldReader struct {
 }
 
 func newFieldReader(r io.Reader) *fieldReader {
-	br := bufio.NewReaderSize(os.Stdin, 65535)
+	br := bufio.NewReaderSize(r, 65535)
 	return &fieldReader{
 		br: br,
 		rp: sync.Pool{
@@ -28,7 +29,7 @@ func newFieldReader(r io.Reader) *fieldReader {
 			}},
 		fp: sync.Pool{
 			New: func() interface{} {
-				s := make([]string, 0, 64)
+				s := make([]string, 0, 16)
 				return &s
 			}},
 	}
@@ -99,59 +100,6 @@ type picker interface {
 	Pick([]string) []string
 }
 
-type indexPicker struct {
-	i int
-}
-
-func (p *indexPicker) Pick(f []string) []string {
-	i := p.i
-	if p.i < 0 {
-		i = len(f) + p.i + 1
-	}
-
-	return pick(f, i, i)
-}
-
-type rangePicker struct {
-	l     int
-	r     int
-	lopen bool
-	ropen bool
-}
-
-func (p *rangePicker) Pick(f []string) []string {
-	cl := p.l
-	if p.lopen {
-		cl = 1
-	} else {
-		if cl < 0 {
-			cl += len(f) + 1
-		} else if cl < 1 {
-			cl = 1
-		}
-	}
-
-	cr := p.r
-	if p.ropen {
-		cr = len(f)
-	} else {
-		if cr < 0 {
-			cr += len(f) + 1
-		} else if len(f) < cr {
-			cr = len(f)
-		}
-	}
-
-	return pick(f, cl, cr)
-}
-
-func pick(f []string, l, r int) []string {
-	if r < 1 || len(f) < l {
-		return nil
-	}
-	return f[l-1 : r]
-}
-
 func newPicker(indexStr string) (picker, error) {
 	s := strings.SplitN(indexStr, ":", 2)
 
@@ -189,14 +137,82 @@ func newPicker(indexStr string) (picker, error) {
 			p.r = r
 		}
 
-		if !(p.lopen || p.ropen) && p.l > p.r {
-			p.l, p.r = p.r, p.l
-		}
-
 		return p, nil
 	default:
 		return nil, fmt.Errorf("failed to parse")
 	}
+}
+
+type indexPicker struct {
+	i int
+}
+
+func (p *indexPicker) Pick(f []string) []string {
+	var i int
+
+	if p.i == 0 {
+		return pick(f, 1, len(f))
+	} else if p.i < 0 {
+		i = len(f) + p.i + 1
+	} else {
+		i = p.i
+	}
+
+	return pick(f, i, i)
+}
+
+type rangePicker struct {
+	l     int
+	r     int
+	lopen bool
+	ropen bool
+}
+
+func (p *rangePicker) Pick(f []string) []string {
+	var l, r int
+
+	if p.lopen {
+		l = 1
+	} else {
+		if p.l < 0 {
+			l = len(f) + p.l + 1
+		} else {
+			l = p.l
+		}
+	}
+
+	if p.ropen {
+		r = len(f)
+	} else {
+		if p.r < 0 {
+			r = len(f) + p.r + 1
+		} else {
+			r = p.r
+		}
+	}
+
+	if l > r && (p.l <= 0 || p.r >= 0) {
+		s := pick(f, r, l)
+		slices.Reverse(s)
+		return s
+	}
+	return pick(f, l, r)
+}
+
+func pick(f []string, l, r int) []string {
+	if r <= 0 || l > len(f) {
+		return nil
+	}
+
+	if l <= 0 {
+		l = 1
+	}
+
+	if r > len(f) {
+		r = len(f)
+	}
+
+	return f[l-1 : r]
 }
 
 func run() error {
@@ -216,7 +232,9 @@ func run() error {
 
 	for {
 		fields, err := fr.read()
-		if err != nil && err != io.EOF {
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
 			return fmt.Errorf("unable to read: %s", err)
 		}
 
@@ -225,10 +243,6 @@ func run() error {
 			li = append(li, picker.Pick(fields)...)
 		}
 		fmt.Println(strings.Join(li, " "))
-
-		if err == io.EOF {
-			return nil
-		}
 	}
 }
 
