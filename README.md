@@ -59,7 +59,7 @@ root 10
 root 11
 ```
 
-Specify a single column with negative index (from right):
+Specify a single column from right with the negative index:
 
 ```bash
 $ ps aux | knife -- -1
@@ -75,7 +75,7 @@ COMMAND
 [rcu_tasks_rude_]
 ```
 
-Specify multiple columns with range format:
+Specify multiple columns with the range format:
 
 ```bash
 $ ps aux | knife 1:2 8:10
@@ -91,7 +91,7 @@ root 10 I< Oct12 0:00
 root 11 S Oct12 0:00
 ```
 
-Specify multiple columns with right open range format:
+Specify multiple columns with the right open range format:
 
 ```bash
 $ ps aux | knife 8:
@@ -107,7 +107,7 @@ I< Oct12 0:00 [mm_percpu_wq]
 S Oct12 0:00 [rcu_tasks_rude_]
 ```
 
-Specify multiple columns with left open range format:
+Specify multiple columns with the left open range format:
 
 ```bash
 $ ps aux | knife :4
@@ -123,7 +123,7 @@ root 10 0.0 0.0
 root 11 0.0 0.0
 ```
 
-Specify reverted multiple columns with range format:
+Specify multiple columns with the reverted range format:
 
 ```bash
 $ ps aux | knife 2:1
@@ -173,7 +173,7 @@ root  11   0.0   0.0   0       0      ?    S
 
 ## Performance
 
-`awk` and `cut` commands are much faster...
+`awk` and `cut` commands are still much faster...
 
 ```bash
 $ time ( cat large_text.txt | knife 1:3 | wc -l )
