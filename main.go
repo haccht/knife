@@ -14,63 +14,64 @@ import (
 
 type fieldReader struct {
 	br *bufio.Reader
-	rp sync.Pool
+	bp sync.Pool
 	fp sync.Pool
 }
 
 func newFieldReader(r io.Reader) *fieldReader {
-	br := bufio.NewReaderSize(r, 65535)
 	return &fieldReader{
-		br: br,
-		rp: sync.Pool{
+		br: bufio.NewReaderSize(r, 65535),
+		bp: sync.Pool{
 			New: func() interface{} {
-				s := make([]rune, 0, 64)
+				s := make([]byte, 0, 64)
 				return &s
 			}},
 		fp: sync.Pool{
 			New: func() interface{} {
-				s := make([]string, 0, 16)
+				s := make([]string, 0, 64)
 				return &s
 			}},
 	}
 }
 
 func (fr *fieldReader) readOne() (string, bool, error) {
-	ptr := fr.rp.Get().(*[]rune)
-	defer fr.rp.Put(ptr)
-	runes := (*ptr)[:0]
+	ptr := fr.bp.Get().(*[]byte)
+	defer fr.bp.Put(ptr)
+	bytes := (*ptr)[:0]
 
 L:
+    // read one field
 	for {
-		r, _, err := fr.br.ReadRune()
+		b, err := fr.br.ReadByte()
 		if err != nil {
 			return "", false, err
 		}
 
-		switch r {
-		case ' ', '\r', '\v', '\f', '\t':
+		switch b {
+		case 9, 11, 12, 13, 32:  //'\t', '\v', '\f', '\r'
 			break L
-		case '\n':
-			fr.br.UnreadRune()
+		case 10:  //'\n'
+			fr.br.UnreadByte()
 			break L
 		default:
-			runes = append(runes, r)
+			bytes = append(bytes, b)
 		}
 	}
 
+    // read trailing spaces
 	for {
-		r, _, err := fr.br.ReadRune()
+		b, err := fr.br.ReadByte()
 		if err != nil {
 			return "", false, err
 		}
 
-		switch r {
-		case ' ', '\r', '\v', '\f', '\t':
-		case '\n':
-			return string(runes), true, nil
+		switch b {
+		case 9, 11, 12, 13, 32:  //'\t', '\v', '\f', '\r'
+		case 10:  //'\n'
+			return string(bytes), true, nil
 		default:
-			fr.br.UnreadRune()
-			return string(runes), false, nil
+			fr.br.UnreadByte()
+			return string(bytes), false, nil
 		}
 	}
 }
@@ -227,7 +228,7 @@ func run() error {
 		pickers[i] = picker
 	}
 
-	li := make([]string, 0, 16)
+	li := make([]string, 0, 64)
 	fr := newFieldReader(os.Stdin)
 
 	for {
