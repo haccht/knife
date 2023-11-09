@@ -246,7 +246,7 @@ func run() error {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stdout, err.Error())
 		os.Exit(1)
 	}
 }
