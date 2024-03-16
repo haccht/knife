@@ -12,7 +12,7 @@ import (
 	flags "github.com/jessevdk/go-flags"
 )
 
-const returnByte = byte('\n')
+const returnode = byte('\n')
 const defaultSeparators = " \t\v\f\r"
 
 type options struct {
@@ -21,8 +21,8 @@ type options struct {
 
 type fieldReader struct {
 	br         *bufio.Reader
-	bytes      []byte
 	fields     []string
+	bufBytes   []byte
 	separators []byte
 }
 
@@ -34,14 +34,14 @@ func newFieldReader(r io.Reader, s string) *fieldReader {
 
 	return &fieldReader{
 		br:         bufio.NewReaderSize(r, 65536),
-		bytes:      make([]byte, 0, 1024),
 		fields:     make([]string, 0, 1024),
+		bufBytes:   make([]byte, 0, 1024),
 		separators: []byte(separators),
 	}
 }
 
 func (fr *fieldReader) readOne() (string, bool, error) {
-	fr.bytes = fr.bytes[:0]
+	fr.bufBytes = fr.bufBytes[:0]
 
 L:
 	// read one field
@@ -54,11 +54,11 @@ L:
 		switch {
 		case slices.Contains(fr.separators, b):
 			break L
-		case b == returnByte:
+		case b == returnode:
 			fr.br.UnreadByte()
 			break L
 		default:
-			fr.bytes = append(fr.bytes, b)
+			fr.bufBytes = append(fr.bufBytes, b)
 		}
 	}
 
@@ -71,11 +71,11 @@ L:
 
 		switch {
 		case slices.Contains(fr.separators, b):
-		case b == returnByte:
-			return string(fr.bytes), true, nil
+		case b == returnode:
+			return string(fr.bufBytes), true, nil
 		default:
 			fr.br.UnreadByte()
-			return string(fr.bytes), false, nil
+			return string(fr.bufBytes), false, nil
 		}
 	}
 }
@@ -237,7 +237,7 @@ func run() error {
 		pickers[i] = picker
 	}
 
-	li := make([]string, 0, 64)
+	fl := make([]string, 0, 64)
 	fr := newFieldReader(os.Stdin, opts.Separators)
 
 	for {
@@ -248,11 +248,11 @@ func run() error {
 			return fmt.Errorf("unable to read: %s", err)
 		}
 
-		li = li[:0]
+		fl = fl[:0]
 		for _, picker := range pickers {
-			li = append(li, picker.Pick(fields)...)
+			fl = append(fl, picker.Pick(fields)...)
 		}
-		fmt.Println(strings.Join(li, " "))
+		fmt.Println(strings.Join(fl, " "))
 	}
 }
 
