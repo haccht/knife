@@ -8,35 +8,40 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
+
+	flags "github.com/jessevdk/go-flags"
 )
 
-type fieldReader struct {
-	br *bufio.Reader
-	bp sync.Pool
-	fp sync.Pool
+const returnByte = byte('\n')
+const defaultSeparators = " \t\v\f\r"
+
+type options struct {
+	Separators string `short:"F" long:"field-separators" description:"Field separators (default: whitespaces)"`
 }
 
-func newFieldReader(r io.Reader) *fieldReader {
+type fieldReader struct {
+	br         *bufio.Reader
+	bytes      []byte
+	fields     []string
+	separators []byte
+}
+
+func newFieldReader(r io.Reader, s string) *fieldReader {
+	separators := defaultSeparators
+	if s != "" {
+		separators = s
+	}
+
 	return &fieldReader{
-		br: bufio.NewReaderSize(r, 65535),
-		bp: sync.Pool{
-			New: func() interface{} {
-				s := make([]byte, 0, 64)
-				return &s
-			}},
-		fp: sync.Pool{
-			New: func() interface{} {
-				s := make([]string, 0, 64)
-				return &s
-			}},
+		br:         bufio.NewReaderSize(r, 65536),
+		bytes:      make([]byte, 0, 1024),
+		fields:     make([]string, 0, 1024),
+		separators: []byte(separators),
 	}
 }
 
 func (fr *fieldReader) readOne() (string, bool, error) {
-	ptr := fr.bp.Get().(*[]byte)
-	defer fr.bp.Put(ptr)
-	bytes := (*ptr)[:0]
+	fr.bytes = fr.bytes[:0]
 
 L:
 	// read one field
@@ -46,14 +51,14 @@ L:
 			return "", false, err
 		}
 
-		switch b {
-		case 9, 11, 12, 13, 32: //'\t', '\v', '\f', '\r'
+		switch {
+		case slices.Contains(fr.separators, b):
 			break L
-		case 10: //'\n'
+		case b == returnByte:
 			fr.br.UnreadByte()
 			break L
 		default:
-			bytes = append(bytes, b)
+			fr.bytes = append(fr.bytes, b)
 		}
 	}
 
@@ -64,21 +69,19 @@ L:
 			return "", false, err
 		}
 
-		switch b {
-		case 9, 11, 12, 13, 32: //'\t', '\v', '\f', '\r'
-		case 10: //'\n'
-			return string(bytes), true, nil
+		switch {
+		case slices.Contains(fr.separators, b):
+		case b == returnByte:
+			return string(fr.bytes), true, nil
 		default:
 			fr.br.UnreadByte()
-			return string(bytes), false, nil
+			return string(fr.bytes), false, nil
 		}
 	}
 }
 
 func (fr *fieldReader) read() ([]string, error) {
-	ptr := fr.fp.Get().(*[]string)
-	defer fr.fp.Put(ptr)
-	fields := (*ptr)[:0]
+	fr.fields = fr.fields[:0]
 
 	for {
 		f, eol, err := fr.readOne()
@@ -87,11 +90,11 @@ func (fr *fieldReader) read() ([]string, error) {
 		}
 
 		if f != "" {
-			fields = append(fields, f)
+			fr.fields = append(fr.fields, f)
 		}
 
 		if eol {
-			return fields, nil
+			return fr.fields, nil
 		}
 	}
 }
@@ -216,8 +219,17 @@ func pick(f []string, l, r int) []string {
 }
 
 func run() error {
-	pickers := make([]picker, len(os.Args)-1)
-	for i, arg := range os.Args[1:] {
+	var opts options
+	args, err := flags.Parse(&opts)
+	if err != nil {
+		if fe, ok := err.(*flags.Error); ok && fe.Type == flags.ErrHelp {
+			os.Exit(0)
+		}
+		os.Exit(1)
+	}
+
+	pickers := make([]picker, len(args))
+	for i, arg := range args {
 		picker, err := newPicker(arg)
 		if err != nil {
 			return fmt.Errorf("invalid syntax: '%s'", arg)
@@ -226,7 +238,7 @@ func run() error {
 	}
 
 	li := make([]string, 0, 64)
-	fr := newFieldReader(os.Stdin)
+	fr := newFieldReader(os.Stdin, opts.Separators)
 
 	for {
 		fields, err := fr.read()
