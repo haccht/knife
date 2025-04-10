@@ -53,6 +53,7 @@ L:
 
 		switch {
 		case slices.Contains(fr.separators, b):
+			fr.br.UnreadByte()
 			break L
 		case b == returnode:
 			fr.br.UnreadByte()
@@ -71,6 +72,7 @@ L:
 
 		switch {
 		case slices.Contains(fr.separators, b):
+			// pass
 		case b == returnode:
 			return string(fr.bufBytes), true, nil
 		default:
@@ -237,7 +239,7 @@ func run() error {
 		pickers[i] = picker
 	}
 
-	fl := make([]string, 0, 64)
+	fl := make([]string, 0, 1024)
 	fr := newFieldReader(os.Stdin, opts.Separators)
 
 	for {
@@ -248,9 +250,8 @@ func run() error {
 			return fmt.Errorf("unable to read: %s", err)
 		}
 
-		fl = fl[:0]
 		for _, picker := range pickers {
-			fl = append(fl, picker.Pick(fields)...)
+			fl = picker.Pick(fields)
 		}
 		fmt.Println(strings.Join(fl, " "))
 	}
