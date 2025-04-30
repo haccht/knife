@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -19,203 +20,123 @@ type options struct {
 	Separators string `short:"F" long:"field-separators" description:"Field separators (default: whitespaces)"`
 }
 
-type fieldReader struct {
+type tokenizer struct {
 	br         *bufio.Reader
-	fields     []string
-	bufBytes   []byte
-	separators []byte
+	buf        []byte
+	tokens     [][]byte
+	separators [256]bool
 }
 
-func newFieldReader(r io.Reader, s string) *fieldReader {
-	separators := defaultSeparators
-	if s != "" {
-		separators = s
+func newTokenizer(r io.Reader, seps string) *tokenizer {
+	if seps == "" {
+		seps = defaultSeparators
 	}
 
-	return &fieldReader{
-		br:         bufio.NewReaderSize(r, 65536),
-		fields:     make([]string, 0, 1024),
-		bufBytes:   make([]byte, 0, 1024),
-		separators: []byte(separators),
-	}
-}
-
-func (fr *fieldReader) readOne() (string, bool, error) {
-	fr.bufBytes = fr.bufBytes[:0]
-
-L:
-	// read one field
-	for {
-		b, err := fr.br.ReadByte()
-		if err != nil {
-			return "", false, err
-		}
-
-		switch {
-		case slices.Contains(fr.separators, b):
-			break L
-		case b == returnode:
-			fr.br.UnreadByte()
-			break L
-		default:
-			fr.bufBytes = append(fr.bufBytes, b)
-		}
+	var sepSet [256]bool
+	for i := 0; i < len(seps); i++ {
+		sepSet[seps[i]] = true
 	}
 
-	// read trailing spaces
-	for {
-		b, err := fr.br.ReadByte()
-		if err != nil {
-			return "", false, err
-		}
-
-		switch {
-		case slices.Contains(fr.separators, b):
-		case b == returnode:
-			return string(fr.bufBytes), true, nil
-		default:
-			fr.br.UnreadByte()
-			return string(fr.bufBytes), false, nil
-		}
+	return &tokenizer{
+		br:         bufio.NewReaderSize(r, 1<<20),
+		buf:        make([]byte, 0, 1024),
+		tokens:     make([][]byte, 0, 1024),
+		separators: sepSet,
 	}
 }
 
-func (fr *fieldReader) read() ([]string, error) {
-	fr.fields = fr.fields[:0]
-
-	for {
-		f, eol, err := fr.readOne()
-		if err != nil {
-			return nil, err
-		}
-
-		if f != "" {
-			fr.fields = append(fr.fields, f)
-		}
-
-		if eol {
-			return fr.fields, nil
-		}
-	}
-}
-
-type picker interface {
-	Pick([]string) []string
-}
-
-func newPicker(indexStr string) (picker, error) {
-	s := strings.SplitN(indexStr, ":", 2)
-
-	switch len(s) {
-	case 1:
-		p := &indexPicker{}
-
-		i, err := strconv.Atoi(s[0])
-		if err != nil {
-			return nil, err
-		}
-		p.i = i
-
-		return p, nil
-	case 2:
-		p := &rangePicker{}
-
-		if s[0] == "" {
-			p.lopen = true
-		} else {
-			l, err := strconv.Atoi(s[0])
-			if err != nil {
-				return nil, err
-			}
-			p.l = l
-		}
-
-		if s[1] == "" {
-			p.ropen = true
-		} else {
-			r, err := strconv.Atoi(s[1])
-			if err != nil {
-				return nil, err
-			}
-			p.r = r
-		}
-
-		return p, nil
-	default:
-		return nil, fmt.Errorf("failed to parse")
-	}
-}
-
-type indexPicker struct {
-	i int
-}
-
-func (p *indexPicker) Pick(f []string) []string {
-	var i int
-
-	if p.i == 0 {
-		return pick(f, 1, len(f))
-	} else if p.i < 0 {
-		i = len(f) + p.i + 1
-	} else {
-		i = p.i
+func (t *tokenizer) split() ([][]byte, error) {
+	line, err := t.br.ReadSlice('\n')
+	if err != nil && err != io.EOF {
+		return nil, err
 	}
 
-	return pick(f, i, i)
+	t.tokens = bytes.FieldsFunc(
+		bytes.TrimRight(line, "\n"),
+		func(r rune) bool { return t.separators[byte(r)] })
+
+	return t.tokens, err
 }
 
-type rangePicker struct {
-	l     int
-	r     int
+type spec struct {
+	lidx  int
+	ridx  int
 	lopen bool
 	ropen bool
 }
 
-func (p *rangePicker) Pick(f []string) []string {
-	var l, r int
-
-	if p.lopen {
+func (s *spec) pick(tokens [][]byte) [][]byte {
+	l := s.lidx
+	if s.lopen {
 		l = 1
-	} else {
-		if p.l < 0 {
-			l = len(f) + p.l + 1
-		} else {
-			l = p.l
-		}
+	}
+	if l <= 0 {
+		l = len(tokens) + l + 1
 	}
 
-	if p.ropen {
-		r = len(f)
-	} else {
-		if p.r < 0 {
-			r = len(f) + p.r + 1
-		} else {
-			r = p.r
-		}
+	r := s.ridx
+	if s.ropen {
+		r = len(tokens)
+	}
+	if r <= 0 {
+		r = len(tokens) + r + 1
 	}
 
-	if l > r && (p.l <= 0 || p.r >= 0) {
-		s := pick(f, r, l)
-		slices.Reverse(s)
-		return s
+	if r > len(tokens) {
+		r = len(tokens)
 	}
-	return pick(f, l, r)
+
+	var reverse bool
+	if l > r {
+		l, r = r, l
+		reverse = true
+	}
+
+	f := tokens[l-1 : r]
+	if reverse {
+		slices.Reverse(f)
+	}
+	return f
 }
 
-func pick(f []string, l, r int) []string {
-	if r <= 0 || l > len(f) {
-		return nil
-	}
+func genSpecs(args []string) ([]*spec, error) {
+	var s []*spec
 
-	if l <= 0 {
-		l = 1
-	}
+	for _, arg := range args {
+		parts := strings.SplitN(arg, ":", 2)
 
-	if r > len(f) {
-		r = len(f)
-	}
+		switch len(parts) {
+		case 1:
+			idx, err := strconv.Atoi(parts[0])
+			if err != nil {
+				return nil, err
+			}
 
-	return f[l-1 : r]
+			s = append(s, &spec{idx, idx, false, false})
+		case 2:
+			var lidx, ridx int
+			var err error
+
+			lopen := parts[0] == ""
+			if !lopen {
+				lidx, err = strconv.Atoi(parts[0])
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			ropen := parts[1] == ""
+			if !ropen {
+				ridx, err = strconv.Atoi(parts[1])
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			s = append(s, &spec{lidx, ridx, lopen, ropen})
+		}
+	}
+	return s, nil
 }
 
 func run() error {
@@ -225,35 +146,41 @@ func run() error {
 		if fe, ok := err.(*flags.Error); ok && fe.Type == flags.ErrHelp {
 			os.Exit(0)
 		}
-		os.Exit(1)
+		return err
 	}
 
-	pickers := make([]picker, len(args))
-	for i, arg := range args {
-		picker, err := newPicker(arg)
-		if err != nil {
-			return fmt.Errorf("invalid syntax: '%s'", arg)
-		}
-		pickers[i] = picker
+	specs, err := genSpecs(args)
+	if err != nil {
+		return fmt.Errorf("invalid syntax: %s", err)
 	}
 
-	fl := make([]string, 0, 64)
-	fr := newFieldReader(os.Stdin, opts.Separators)
-
+	w := bufio.NewWriter(os.Stdout)
+	t := newTokenizer(os.Stdin, opts.Separators)
 	for {
-		fields, err := fr.read()
+		tokens, err := t.split()
 		if err == io.EOF {
-			return nil
-		} else if err != nil {
+			break
+		}
+		if err != nil {
 			return fmt.Errorf("unable to read: %s", err)
 		}
 
-		fl = fl[:0]
-		for _, picker := range pickers {
-			fl = append(fl, picker.Pick(fields)...)
+		top := true
+		for _, s := range specs {
+			for _, f := range s.pick(tokens) {
+				if top {
+					top = !top
+				} else {
+					w.WriteByte(' ')
+				}
+				w.Write(f)
+			}
 		}
-		fmt.Println(strings.Join(fl, " "))
+		w.WriteByte('\n')
+		w.Flush()
 	}
+
+	return nil
 }
 
 func main() {

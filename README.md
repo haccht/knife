@@ -173,15 +173,15 @@ root  11   0.0   0.0   0       0      ?    S
 
 ## Performance
 
-`awk` and `cut` commands are still much faster...
+`awk` and `cut` commands are still faster...
 
 ```bash
 $ time ( cat large_text.txt | knife 1:3 | wc -l )
 1000000
 
-real	0m3.810s
-user	0m3.337s
-sys	0m1.905s
+real    0m1.486s
+user    0m1.021s
+sys     0m1.092s
 
 
 $ time ( cat large_text.txt | awk '{print $1,$2,$3}' | wc -l )
@@ -189,13 +189,13 @@ $ time ( cat large_text.txt | awk '{print $1,$2,$3}' | wc -l )
 
 real	0m0.579s
 user	0m0.515s
-sys	0m0.139s
+sys	    0m0.139s
 
 
 $ time ( cat large_text.txt | tr -s ' ' | cut -d ' ' -f 1,2,3 | wc -l )
 1000000
 
-real	0m0.441s
-user	0m0.646s
-sys	0m0.144s
+real    0m0.749s
+user    0m0.749s
+sys     0m0.568s
 ```
