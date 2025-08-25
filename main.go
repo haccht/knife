@@ -51,9 +51,25 @@ func (t *tokenizer) split() ([][]byte, error) {
 		return nil, err
 	}
 
-	t.tokens = bytes.FieldsFunc(
-		bytes.TrimRight(line, "\n"),
-		func(r rune) bool { return t.separators[byte(r)] })
+	trimmedLine := bytes.TrimRight(line, "\n")
+
+	t.tokens = t.tokens[:0]
+	start := -1
+	for i, c := range trimmedLine {
+		if t.separators[c] {
+			if start != -1 {
+				t.tokens = append(t.tokens, trimmedLine[start:i])
+				start = -1
+			}
+		} else {
+			if start == -1 {
+				start = i
+			}
+		}
+	}
+	if start != -1 {
+		t.tokens = append(t.tokens, trimmedLine[start:])
+	}
 
 	return t.tokens, err
 }
