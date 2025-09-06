@@ -73,6 +73,9 @@ func (s *spec) pick(tokens [][]byte) [][]byte {
 	if l <= 0 {
 		l = len(tokens) + l + 1
 	}
+	if l > len(tokens) {
+		l = len(tokens)
+	}
 
 	r := s.ridx
 	if s.ropen {
@@ -81,7 +84,6 @@ func (s *spec) pick(tokens [][]byte) [][]byte {
 	if r <= 0 {
 		r = len(tokens) + r + 1
 	}
-
 	if r > len(tokens) {
 		r = len(tokens)
 	}
