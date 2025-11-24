@@ -15,9 +15,11 @@ import (
 
 const returnode = byte('\n')
 const defaultSeparators = " \t\v\f\r"
+const defaultJoin = " "
 
 type options struct {
 	Separators string `short:"F" long:"field-separators" description:"Field separators (default: whitespaces)"`
+	Join       string `short:"j" long:"join" description:"Separator string used when joining fields (default: space)"`
 }
 
 type tokenizer struct {
@@ -170,6 +172,11 @@ func run() error {
 		return fmt.Errorf("invalid syntax: %s", err)
 	}
 
+	join := opts.Join
+	if join == "" {
+		join = defaultJoin
+	}
+
 	w := bufio.NewWriter(os.Stdout)
 	t := newTokenizer(os.Stdin, opts.Separators)
 	for {
@@ -187,7 +194,7 @@ func run() error {
 				if top {
 					top = !top
 				} else {
-					w.WriteByte(' ')
+					w.WriteString(join)
 				}
 				w.Write(f)
 			}
