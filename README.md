@@ -4,6 +4,10 @@
 
 `knife` reads text form stdin and display only columns you specify with flexible format.
 
+Use `-F, --separator` to set the input field separators (default: whitespace).
+Use `-j, --join` to change the separator used when rejoining selected fields (default: a single space).
+Use `--buffer-size` to configure the buffered I/O size in bytes (default: 1MB) when processing very large inputs.
+
 ``` bash
 $ cat sample.txt | knife <index>
 ```
@@ -57,6 +61,22 @@ root 6
 root 8
 root 10
 root 11
+```
+
+Change the output separator with `-j` (e.g. create comma-separated output):
+
+```bash
+$ ps aux | knife 1 2 -j ,
+USER,PID
+root,1
+root,2
+root,3
+root,4
+root,5
+root,6
+root,8
+root,10
+root,11
 ```
 
 Specify a single column from right with the negative index:
@@ -174,6 +194,8 @@ root  11   0.0   0.0   0       0      ?    S
 ## Performance
 
 `awk` and `cut` commands are still faster...
+
+`knife` uses 1MB buffered I/O for both reading and writing by default (configurable via `--buffer-size`) and defers flushes until the end of the stream. This reduces syscall overhead and helps throughput when processing large datasets.
 
 ```bash
 $ time ( cat large_text.txt | knife 1:3 | wc -l )
