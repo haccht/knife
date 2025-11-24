@@ -4,7 +4,10 @@
 
 `knife` reads text form stdin and display only columns you specify with flexible format.
 
+Use `-F, --separator` to set the input field separators (default: whitespace).
 Use `-j, --join` to change the separator used when rejoining selected fields (default: a single space).
+Use `--buffer-size` to configure the buffered I/O size in bytes (default: 1MB) when processing very large inputs.
+
 
 ``` bash
 $ cat sample.txt | knife <index>
@@ -192,6 +195,8 @@ root  11   0.0   0.0   0       0      ?    S
 ## Performance
 
 `awk` and `cut` commands are still faster...
+
+`knife` uses 1MB buffered I/O for both reading and writing by default (configurable via `--buffer-size`) and defers flushes until the end of the stream. This reduces syscall overhead and helps throughput when processing large datasets.
 
 ```bash
 $ time ( cat large_text.txt | knife 1:3 | wc -l )
