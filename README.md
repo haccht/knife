@@ -4,6 +4,8 @@
 
 `knife` reads text form stdin and display only columns you specify with flexible format.
 
+Use `-j, --join` to change the separator used when rejoining selected fields (default: a single space).
+
 ``` bash
 $ cat sample.txt | knife <index>
 ```
@@ -57,6 +59,22 @@ root 6
 root 8
 root 10
 root 11
+```
+
+Change the output separator with `-j` (e.g. create comma-separated output):
+
+```bash
+$ ps aux | knife 1 2 -j ,
+USER,PID
+root,1
+root,2
+root,3
+root,4
+root,5
+root,6
+root,8
+root,10
+root,11
 ```
 
 Specify a single column from right with the negative index:
