@@ -178,6 +178,7 @@ func run() error {
 	if join == "" {
 		join = defaultJoin
 	}
+
 	joinBytes := []byte(join)
 
 	bufSize := opts.BufferSize
@@ -188,6 +189,7 @@ func run() error {
 	w := bufio.NewWriterSize(os.Stdout, bufSize)
 	defer w.Flush()
 	t := newTokenizer(os.Stdin, opts.Separators, bufSize)
+
 	for {
 		tokens, err := t.split()
 		if err == io.EOF {
@@ -203,6 +205,7 @@ func run() error {
 				if top {
 					top = !top
 				} else {
+
 					w.Write(joinBytes)
 				}
 				w.Write(f)

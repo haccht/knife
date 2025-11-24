@@ -8,6 +8,7 @@ Use `-F, --separator` to set the input field separators (default: whitespace).
 Use `-j, --join` to change the separator used when rejoining selected fields (default: a single space).
 Use `--buffer-size` to configure the buffered I/O size in bytes (default: 1MB) when processing very large inputs.
 
+
 ``` bash
 $ cat sample.txt | knife <index>
 ```
