@@ -15,9 +15,13 @@ import (
 
 const returnode = byte('\n')
 const defaultSeparators = " \t\v\f\r"
+const defaultJoin = " "
+const defaultBufferSize = 1 << 20
 
 type options struct {
 	Separators string `short:"F" long:"field-separators" description:"Field separators (default: whitespaces)"`
+	Join       string `short:"j" long:"join" description:"Separator string used when joining fields (default: space)"`
+	BufferSize int    `long:"buffer-size" description:"Buffer size in bytes for buffered I/O (default: 1MB)"`
 }
 
 type tokenizer struct {
@@ -27,7 +31,7 @@ type tokenizer struct {
 	separators [256]bool
 }
 
-func newTokenizer(r io.Reader, seps string) *tokenizer {
+func newTokenizer(r io.Reader, seps string, bufSize int) *tokenizer {
 	if seps == "" {
 		seps = defaultSeparators
 	}
@@ -38,7 +42,7 @@ func newTokenizer(r io.Reader, seps string) *tokenizer {
 	}
 
 	return &tokenizer{
-		br:         bufio.NewReaderSize(r, 1<<20),
+		br:         bufio.NewReaderSize(r, bufSize),
 		buf:        make([]byte, 0, 1024),
 		tokens:     make([][]byte, 0, 1024),
 		separators: sepSet,
@@ -51,9 +55,25 @@ func (t *tokenizer) split() ([][]byte, error) {
 		return nil, err
 	}
 
-	t.tokens = bytes.FieldsFunc(
-		bytes.TrimRight(line, "\n"),
-		func(r rune) bool { return t.separators[byte(r)] })
+	trimmedLine := bytes.TrimRight(line, "\n")
+
+	t.tokens = t.tokens[:0]
+	start := -1
+	for i, c := range trimmedLine {
+		if t.separators[c] {
+			if start != -1 {
+				t.tokens = append(t.tokens, trimmedLine[start:i])
+				start = -1
+			}
+		} else {
+			if start == -1 {
+				start = i
+			}
+		}
+	}
+	if start != -1 {
+		t.tokens = append(t.tokens, trimmedLine[start:])
+	}
 
 	return t.tokens, err
 }
@@ -156,8 +176,22 @@ func run() error {
 		return fmt.Errorf("invalid syntax: %s", err)
 	}
 
-	w := bufio.NewWriter(os.Stdout)
-	t := newTokenizer(os.Stdin, opts.Separators)
+	join := opts.Join
+	if join == "" {
+		join = defaultJoin
+	}
+
+	joinBytes := []byte(join)
+
+	bufSize := opts.BufferSize
+	if bufSize <= 0 {
+		bufSize = defaultBufferSize
+	}
+
+	w := bufio.NewWriterSize(os.Stdout, bufSize)
+	defer w.Flush()
+	t := newTokenizer(os.Stdin, opts.Separators, bufSize)
+
 	for {
 		tokens, err := t.split()
 		if err == io.EOF {
@@ -173,13 +207,13 @@ func run() error {
 				if top {
 					top = !top
 				} else {
-					w.WriteByte(' ')
+
+					w.Write(joinBytes)
 				}
 				w.Write(f)
 			}
 		}
 		w.WriteByte('\n')
-		w.Flush()
 	}
 
 	return nil
