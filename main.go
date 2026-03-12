@@ -6,47 +6,50 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
+	"regexp"
 	"strconv"
 	"strings"
 
 	flags "github.com/jessevdk/go-flags"
 )
 
-const returnode = byte('\n')
 const defaultSeparators = " \t\v\f\r"
-const defaultJoin = " "
 const defaultBufferSize = 1 << 20
 
 type options struct {
-	Separators string `short:"F" long:"field-separators" description:"Field separators (default: whitespaces)"`
-	Join       string `short:"j" long:"join" description:"Separator string used when joining fields (default: space)"`
-	BufferSize int    `long:"buffer-size" description:"Buffer size in bytes for buffered I/O (default: 1MB)"`
+	Separators []string `short:"F" long:"field-separator" description:"Single-byte field separator. Repeat to use multiple separators."`
+	BufferSize int      `long:"buffer-size" description:"Buffer size in bytes for buffered I/O (default: 1MB)"`
 }
 
 type tokenizer struct {
 	br         *bufio.Reader
-	buf        []byte
 	tokens     [][]byte
 	separators [256]bool
+	explicit   bool
 }
 
-func newTokenizer(r io.Reader, seps string, bufSize int) *tokenizer {
-	if seps == "" {
-		seps = defaultSeparators
+func newTokenizer(r io.Reader, seps []string, bufSize int) (*tokenizer, error) {
+	explicit := len(seps) > 0
+	if !explicit {
+		seps = []string{defaultSeparators}
 	}
 
 	var sepSet [256]bool
-	for i := 0; i < len(seps); i++ {
-		sepSet[seps[i]] = true
+	for _, sep := range seps {
+		if explicit && len(sep) != 1 {
+			return nil, fmt.Errorf("field separator must be a single byte: %q", sep)
+		}
+		for i := 0; i < len(sep); i++ {
+			sepSet[sep[i]] = true
+		}
 	}
 
 	return &tokenizer{
 		br:         bufio.NewReaderSize(r, bufSize),
-		buf:        make([]byte, 0, 1024),
 		tokens:     make([][]byte, 0, 1024),
 		separators: sepSet,
-	}
+		explicit:   explicit,
+	}, nil
 }
 
 func (t *tokenizer) split() ([][]byte, error) {
@@ -58,6 +61,18 @@ func (t *tokenizer) split() ([][]byte, error) {
 	trimmedLine := bytes.TrimRight(line, "\n")
 
 	t.tokens = t.tokens[:0]
+	if t.explicit {
+		start := 0
+		for i, c := range trimmedLine {
+			if t.separators[c] {
+				t.tokens = append(t.tokens, trimmedLine[start:i])
+				start = i + 1
+			}
+		}
+		t.tokens = append(t.tokens, trimmedLine[start:])
+		return t.tokens, err
+	}
+
 	start := -1
 	for i, c := range trimmedLine {
 		if t.separators[c] {
@@ -83,82 +98,153 @@ type spec struct {
 	ridx  int
 	lopen bool
 	ropen bool
+	re    *regexp.Regexp
 }
 
-func (s *spec) pick(tokens [][]byte) [][]byte {
-	l := s.lidx
-	if s.lopen {
-		l = 1
+func resolveBound(idx int, open bool, openValue int, tokenCount int) int {
+	if open {
+		idx = openValue
 	}
-	if l <= 0 {
-		l = len(tokens) + l + 1
+	if idx <= 0 {
+		idx = tokenCount + idx + 1
 	}
-	if l > len(tokens) {
-		l = len(tokens)
+	if idx < 1 {
+		return 0
+	}
+	if idx > tokenCount {
+		return tokenCount - 1
+	}
+	return idx - 1
+}
+
+func (s *spec) each(tokens [][]byte, fn func([]byte)) {
+	if len(tokens) == 0 {
+		return
 	}
 
-	r := s.ridx
-	if s.ropen {
-		r = len(tokens)
-	}
-	if r <= 0 {
-		r = len(tokens) + r + 1
-	}
-	if r > len(tokens) {
-		r = len(tokens)
-	}
-
-	var reverse bool
+	l := resolveBound(s.lidx, s.lopen, 1, len(tokens))
+	r := resolveBound(s.ridx, s.ropen, len(tokens), len(tokens))
+	step := 1
 	if l > r {
-		l, r = r, l
-		reverse = true
+		step = -1
+	}
+	for i := l; ; i += step {
+		fn(tokens[i])
+		if i == r {
+			break
+		}
+	}
+}
+
+func (s *spec) selectField(token []byte) []byte {
+	if s.re == nil {
+		return token
 	}
 
-	f := tokens[l-1 : r]
-	if reverse {
-		slices.Reverse(f)
+	match := s.re.Find(token)
+	if match == nil {
+		return token
 	}
-	return f
+	return match
+}
+
+func parseIndex(part string) (int, error) {
+	if part == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(part)
+}
+
+func parseColumnSpec(arg string) (*spec, error) {
+	left, right, hasRange := strings.Cut(arg, ":")
+	if !hasRange {
+		idx, err := strconv.Atoi(left)
+		if err != nil {
+			return nil, err
+		}
+		return &spec{lidx: idx, ridx: idx}, nil
+	}
+
+	lidx, err := parseIndex(left)
+	if err != nil {
+		return nil, err
+	}
+	ridx, err := parseIndex(right)
+	if err != nil {
+		return nil, err
+	}
+	return &spec{lidx: lidx, ridx: ridx, lopen: left == "", ropen: right == ""}, nil
 }
 
 func genSpecs(args []string) ([]*spec, error) {
-	var s []*spec
+	specs := make([]*spec, 0, len(args))
 
 	for _, arg := range args {
-		parts := strings.SplitN(arg, ":", 2)
+		columnSpec, pattern, hasExtract := strings.Cut(arg, "@")
 
-		switch len(parts) {
-		case 1:
-			idx, err := strconv.Atoi(parts[0])
-			if err != nil {
-				return nil, err
-			}
-
-			s = append(s, &spec{idx, idx, false, false})
-		case 2:
-			var lidx, ridx int
-			var err error
-
-			lopen := parts[0] == ""
-			if !lopen {
-				lidx, err = strconv.Atoi(parts[0])
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			ropen := parts[1] == ""
-			if !ropen {
-				ridx, err = strconv.Atoi(parts[1])
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			s = append(s, &spec{lidx, ridx, lopen, ropen})
+		parsed, err := parseColumnSpec(columnSpec)
+		if err != nil {
+			return nil, err
 		}
+		if hasExtract {
+			if pattern == "" {
+				return nil, fmt.Errorf("missing regexp in selector: %s", arg)
+			}
+
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return nil, fmt.Errorf("invalid regexp in selector %q: %w", arg, err)
+			}
+			parsed.re = re
+		}
+
+		specs = append(specs, parsed)
 	}
-	return s, nil
+	return specs, nil
+}
+
+func normalizeOptions(opts options) int {
+	bufSize := opts.BufferSize
+	if bufSize <= 0 {
+		bufSize = defaultBufferSize
+	}
+
+	return bufSize
+}
+
+func process(r io.Reader, out io.Writer, opts options, specs []*spec) error {
+	bufSize := normalizeOptions(opts)
+	w := bufio.NewWriterSize(out, bufSize)
+	defer w.Flush()
+	t, err := newTokenizer(r, opts.Separators, bufSize)
+	if err != nil {
+		return err
+	}
+
+	for {
+		tokens, err := t.split()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("unable to read: %s", err)
+		}
+
+		first := true
+		for _, s := range specs {
+			s.each(tokens, func(token []byte) {
+				if first {
+					first = false
+				} else {
+					_ = w.WriteByte(' ')
+				}
+				_, _ = w.Write(s.selectField(token))
+			})
+		}
+		_ = w.WriteByte('\n')
+	}
+
+	return nil
 }
 
 func run() error {
@@ -176,47 +262,7 @@ func run() error {
 		return fmt.Errorf("invalid syntax: %s", err)
 	}
 
-	join := opts.Join
-	if join == "" {
-		join = defaultJoin
-	}
-
-	joinBytes := []byte(join)
-
-	bufSize := opts.BufferSize
-	if bufSize <= 0 {
-		bufSize = defaultBufferSize
-	}
-
-	w := bufio.NewWriterSize(os.Stdout, bufSize)
-	defer w.Flush()
-	t := newTokenizer(os.Stdin, opts.Separators, bufSize)
-
-	for {
-		tokens, err := t.split()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("unable to read: %s", err)
-		}
-
-		top := true
-		for _, s := range specs {
-			for _, f := range s.pick(tokens) {
-				if top {
-					top = !top
-				} else {
-
-					w.Write(joinBytes)
-				}
-				w.Write(f)
-			}
-		}
-		w.WriteByte('\n')
-	}
-
-	return nil
+	return process(os.Stdin, os.Stdout, opts, specs)
 }
 
 func main() {

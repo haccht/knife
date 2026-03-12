@@ -4,8 +4,7 @@
 
 `knife` reads text form stdin and display only columns you specify with flexible format.
 
-Use `-F, --separator` to set the input field separators (default: whitespace).
-Use `-j, --join` to change the separator used when rejoining selected fields (default: a single space).
+Use `-F, --field-separator` to set explicit single-byte delimiters. Repeat `-F` to use multiple delimiters. If `-F` is omitted, `knife` splits on collapsed whitespace.
 Use `--buffer-size` to configure the buffered I/O size in bytes (default: 1MB) when processing very large inputs.
 
 
@@ -64,20 +63,11 @@ root 10
 root 11
 ```
 
-Change the output separator with `-j` (e.g. create comma-separated output):
+Explicit delimiters preserve empty fields:
 
 ```bash
-$ ps aux | knife 1 2 -j ,
-USER,PID
-root,1
-root,2
-root,3
-root,4
-root,5
-root,6
-root,8
-root,10
-root,11
+$ printf 'a,,,c\n' | knife -F, 1:4
+a   c
 ```
 
 Specify a single column from right with the negative index:
@@ -190,6 +180,21 @@ root  6    0.0   0.0   0       0      ?    I<
 root  8    0.0   0.0   0       0      ?    I<
 root  10   0.0   0.0   0       0      ?    I<
 root  11   0.0   0.0   0       0      ?    S
+```
+
+Extract the first regexp match from selected columns. If a field does not match, the original field will be printed:
+
+```bash
+$ printf 'alice id=42 x7\nbob id=77 none\n' | knife 1 '2@[0-9]+' '3@[0-9]+'
+alice 42 7
+bob 77 none
+```
+
+Apply a regexp to every field selected by a range:
+
+```bash
+$ printf 'a1 b22 c333\n' | knife '1:3@[0-9]+'
+1 22 333
 ```
 
 ## Performance
