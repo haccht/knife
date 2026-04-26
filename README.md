@@ -4,11 +4,20 @@
 
 `knife` reads text form stdin and display only columns you specify with flexible format.
 
-Use `-F, --field-separator` to set explicit single-byte delimiters. Repeat `-F` to use multiple delimiters. If `-F` is omitted, `knife` splits on collapsed whitespace.
-Use `--buffer-size` to configure the buffered I/O size in bytes (default: 1MB) when processing very large inputs.
-
 
 ``` bash
+$ knife -h
+Usage:
+  knife [OPTIONS]
+
+Application Options:
+  -F, --field-separator= Single-byte field separator. Repeat to use multiple separators.
+      --buffer-size=     Buffer size in bytes for buffered I/O (default: 1MB)
+
+Help Options:
+  -h, --help             Show this help message
+
+
 $ cat sample.txt | knife <index>
 ```
 
