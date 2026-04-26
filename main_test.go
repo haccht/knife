@@ -79,6 +79,42 @@ func TestProcessRegexSelectorFallsBackToOriginalField(t *testing.T) {
 	}
 }
 
+func TestProcessCommandSelector(t *testing.T) {
+	out, err := execute(t, "u a b c id=123 z\nv d e f x99 y\n", options{}, "1", "4", "5|grep -oE [0-9]+", "6")
+	if err != nil {
+		t.Fatalf("process returned error: %v", err)
+	}
+	if out != "u c 123 z\nv f 99 y\n" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestProcessRegexCommandSelector(t *testing.T) {
+	out, err := execute(t, "alice id=123\nbob id=77\n", options{}, "1", "2@[0-9]+|sed 's/^/#/'")
+	if err != nil {
+		t.Fatalf("process returned error: %v", err)
+	}
+	if out != "alice #123\nbob #77\n" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestProcessCommandSelectorAllowsBufferedOutput(t *testing.T) {
+	out, err := execute(t, "a 1\nb 2\nc 3\n", options{}, "1", "2|awk '{ xs[NR] = $1 } END { for (i = 1; i <= NR; i++) print xs[i] * 10 }'")
+	if err != nil {
+		t.Fatalf("process returned error: %v", err)
+	}
+	if out != "a 10\nb 20\nc 30\n" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestGenSpecsRejectsEmptyCommand(t *testing.T) {
+	if _, err := genSpecs([]string{"1|"}); err == nil {
+		t.Fatal("expected missing command error")
+	}
+}
+
 func TestProcessExplicitSeparatorKeepsEmptyFields(t *testing.T) {
 	out, err := execute(t, "a,,,c\n", options{Separators: []string{","}}, "1:4")
 	if err != nil {

@@ -182,19 +182,50 @@ root  10   0.0   0.0   0       0      ?    I<
 root  11   0.0   0.0   0       0      ?    S
 ```
 
-Extract the first regexp match from selected columns. If a field does not match, the original field will be printed:
+Extract the first regexp match from selected columns. This is useful when a field contains a tagged value and you only need the value part. If a field does not match, the original field will be printed:
 
 ```bash
-$ printf 'alice id=42 x7\nbob id=77 none\n' | knife 1 '2@[0-9]+' '3@[0-9]+'
-alice 42 7
-bob 77 none
+$ cat <<'EOF' | knife '2@[^=]+$' '3@[^=]+$' '4@[0-9]+'
+2026-04-01T10:00:00Z user=alice request_id=req-42 status=200
+2026-04-01T10:00:01Z user=bob request_id=req-77 status=500
+EOF
+alice req-42 200
+bob req-77 500
 ```
 
-Apply a regexp to every field selected by a range:
+Apply a regexp to every field selected by a range. For example, extract numeric metric values from several tagged fields:
 
 ```bash
-$ printf 'a1 b22 c333\n' | knife '1:3@[0-9]+'
-1 22 333
+$ cat <<'EOF' | knife '2:4@[0-9.]+'
+api latency=12.8ms size=1536B retry=2
+web latency=8.4ms size=512B retry=0
+EOF
+12.8 1536 2
+8.4 512 0
+```
+
+Pipe selected fields to a shell command and replace them with the command output. This is useful for conversions that are easier to express with an existing tool:
+
+```bash
+$ cat <<'EOF' | knife '4|numfmt --to=iec'
+GET /a 204 1536
+POST /upload 201 1048576
+EOF
+1.5K
+1.0M
+```
+
+The command is started once per selector command, not once per input line. While reading input, `knife` sends each selected field to the command's standard input as one line, and uses one line of standard output as the replacement for each field. Commands used this way must emit exactly one output line for each selected field.
+
+You can combine regexp extraction and command replacement:
+
+```bash
+$ cat <<'EOF' | knife '2@[^=]+$|tr A-Z a-z'
+alice email=ALICE@EXAMPLE.COM
+bob email=BOB@EXAMPLE.NET
+EOF
+alice@example.com
+bob@example.net
 ```
 
 ## Performance
