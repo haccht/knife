@@ -39,6 +39,16 @@ func TestProcessRegexSelectorMixed(t *testing.T) {
 	}
 }
 
+func TestProcessRegexSelectorAllowsSpacesAroundOperator(t *testing.T) {
+	out, err := execute(t, "id=123 alpha\nid=77 beta\n", options{}, "1 @ [0-9]+")
+	if err != nil {
+		t.Fatalf("process returned error: %v", err)
+	}
+	if out != "123\n77\n" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
 func TestProcessRegexSelectorRange(t *testing.T) {
 	out, err := execute(t, "a1 b22 c333\n", options{}, "1:3@[0-9]+")
 	if err != nil {
@@ -85,6 +95,16 @@ func TestProcessCommandSelector(t *testing.T) {
 		t.Fatalf("process returned error: %v", err)
 	}
 	if out != "u c 123 z\nv f 99 y\n" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestProcessCommandSelectorAllowsSpacesAroundOperator(t *testing.T) {
+	out, err := execute(t, "a\nb\n", options{}, "1 | sed 's/^/#/'")
+	if err != nil {
+		t.Fatalf("process returned error: %v", err)
+	}
+	if out != "#a\n#b\n" {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }

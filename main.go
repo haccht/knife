@@ -180,6 +180,9 @@ func genSpecs(args []string) ([]*spec, error) {
 	for _, arg := range args {
 		selector, command, hasCommand := strings.Cut(arg, "|")
 		columnSpec, pattern, hasExtract := strings.Cut(selector, "@")
+		columnSpec = strings.TrimSpace(columnSpec)
+		pattern = strings.TrimSpace(pattern)
+		command = strings.TrimSpace(command)
 
 		parsed, err := parseColumnSpec(columnSpec)
 		if err != nil {
